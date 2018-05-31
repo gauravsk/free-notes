@@ -1,0 +1,420 @@
+---
+title: "How to compute functional rarity indices using `funrar`"
+author: "Matthias Grenié"
+date: "21 mai 2018"
+output:
+    pdf_document:
+        latex_engine: xelatex
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document aims to guide you through the use of `funrar` to compute functional rarity indices.
+The aim is to reproduce the analyses from [@Grenie_funrar_2017] by using the Mammals dataset published on Dryad [@Lawing_Data_2016] from [@Lawing_Community_2017]. We are going to describe the functional rarity of North American mammals from atlas data.
+Before running the analysis be sure to install the different packages and download the needed datasets by running the following chunk:
+
+```{r, eval = FALSE}
+
+# Install package `devtools` to install development version of `funrar`
+if (!require("devtools")) {
+    install.packages("devtools")
+}
+
+# Install development version of funrar
+devtools::install_github("Rekyt/funrar", build_vignettes = TRUE)
+
+# Install development version of `rdryad` if missing to download the example
+# dataset
+devtools::install_github("ropensci/rdryad")
+
+# Install `ggplot2` if missing
+if (!require("ggplot2")) {
+    install.packages("ggplot2")
+}
+
+# Create a tutorial directory in the current directory
+if (!dir.exists("funrar_tutorial")) {
+    dir.create("funrar_tutorial")
+}
+
+# Move to tutorial directory
+setwd("funrar_tutorial")
+
+if (!dir.exists("data")) {
+    dir.create("data")
+}
+
+# Download the example dataset from Lawning et al. 2016
+# <doi:10.5061/dryad.9t0n8>
+tempfile("data/lawning_data.zip")
+rdryad::dryad_fetch(
+    rdryad::dryad_files(rdryad::handle2doi("10255/dryad.116171"))[1],
+    destfile = "data/lawning_data.zip", mode = "wb")
+unzip("data/lawning_data.zip", exdir = "data")
+unlink("data/lawning_data.zip")
+```
+
+## Load Data
+
+Now that all the necessary packages are installed and the example dataset
+downloaded, we can begin by loading and describing the files in the archive.
+@Lawing_Data_2016 mentioned in its an atlas dataset of North American mammals.
+The trait matrix is in the `Traits.csv` file. It contains the trait information for all the mammal from the @Jones_PanTHERIA_2009 database.
+
+```{r}
+trait_matrix = read.csv("data/DryadArchive/Traits.csv")
+
+head(trait_matrix, 2)
+```
+This table contains the traits of species from the @Jones_PanTHERIA_2009 database, with only quantitative traits.
+In order to compute functional rarity we need to choose a subset of traits to keep a high number of species while using enough traits to estimate functional rarity. In order to get similar results to [@Grenie_funrar_2017], we select the following traits: adult body mass, litter size, diest breadth, habitat breadth and terrestriality.
+```{r}
+# Filter observation that are not NA in the selected columns
+trait_subset = subset(trait_matrix, !is.na(trait_matrix$X5_1_AdultBodyMass_g) &
+                          !is.na(trait_matrix$X15_1_LitterSize) &
+                          !is.na(trait_matrix$X6_1_DietBreadth) &
+                          !is.na(trait_matrix$X6_2_TrophicLevel) &
+                          !is.na(trait_matrix$X12_1_HabitatBreadth) &
+                          !is.na(trait_matrix$X12_2_Terrestriality))
+
+# Conserve only the necessary columns
+trait_subset = trait_subset[, colSums(is.na(trait_subset)) == 0]
+
+head(trait_subset)
+```
+
+Then we need to load one `PresAbsMatrixXXX.csv` file, which contains the presence-absence matrix with the different species. To make computation quicker and avoid clogging the RAM, we load the coarser resolution presence-absence matrix `PresAbsMatrix250.csv`.
+
+```{r}
+pres_matrix = read.csv("data/DryadArchive/PresAbsMatrix250.csv")
+
+pres_matrix[1:5, 1:5]
+```
+
+We need then to select only species for which we have traits:
+```{r}
+# Select only the subset species for which we have selected the traits
+pres_subset = pres_matrix[, c(c("GlobalID", "Longitude", "Latitude"),
+                          gsub(" ", "_", trait_subset$TaxonName))]
+```
+
+
+## Compute distance matrix
+
+Now that we have loaded the data and selected the traits, we can compute the functional distance/dissimilarity matrix that will be used in the computation of functional rarity indices.
+
+Before computing the distance matrix we have to make sure that the trait matrix is well formatted, with row names corresponding to species names and with only traits needed for distance matrices.
+
+```{r format_traits}
+library("funrar")
+
+trait_format = trait_subset
+rownames(trait_format) = gsub(" ", "_", trait_format$TaxonName)
+trait_format = trait_format[, -1]
+
+trait_distance = compute_dist_matrix(trait_format, metric = "gower")
+```
+
+The `compute_dist_matrix()` function is a wrapper around the `daisy()` function in package `cluster`. By default it computes Gower's distance [-@Gower_General_1971], but the distance can be changed using the `metric` argument. For example to compute euclidean trait distance, it is possible to use `compute_dist_matrix(metric = "euclidean")`.
+Otherwise any distance/dissimilarity method can used as long as the distance matrix is of `matrix` type with column and row names corresponding to species/individual/genotype names.
+
+When working with mixed traits (continuous, discrete, ordinal, nominal and others), another distance metric that can be considered is the extended Gower distance [@Pavoine_challenge_2009], computable using the `dist.ktab()` function of the `ade4` package.
+
+**WARNING:** Make sure that column types correspond to trait values before
+computing distances (ordinal traits as `ordered` factor for example). Also, if you are using a distance metric that is not scaled between 0 and 1, the indices won't be scaled between 0 and 1, so if you use the euclidean distance, be sure to scale between 0 and 1 before using it in functional rarity metrics.
+
+## Compute rarity indices
+
+### Notes on format
+
+In `funrar` all the functions to compute rarity indices are provided in two format depending on the presence-absence matrix.
+The presence-absence data can be provided as a matrix using the "regular" version of functions. The most common format is a presence-absence matrix, such a matrix can be difficult to load using R. It has recently been suggested that the "tidy" format should be used to structure data [@JSSv059i10]. In tidy format, the site-species matrix has three columns: one for species, one for site and one for abundances, each row is an observation of a given species in a given site with a given abundance.
+
+All indices functions exist in a regular form that uses the matrix format. All of them exist in a tidy or stack version using a suffix `_stack()` (and `_tidy()`).
+
+### Distinctiveness (Local Trait Rarity)
+
+The `funrar` package computes the indices following [@Violle_Functional_2017]. Thus functional distinctiveness, i.e., the local trait rarity is defined as follow:
+$$
+D_i = \frac{
+        \sum_{j = 1, j \neq i}^{N} d_{ij}
+        }{N-1}
+$$
+with $i$ the focal species, $N$ the total number of species in the given community and $d_{ij}$ the dissimarity/distance coefficient between species $i$ and $j$.
+When using abundances the functional distinctiveness is defied as:
+$$
+D_{i, ab} = \frac{
+        \sum_{j = 1, j \neq i}^{N} d_{ij} \times A_j
+        }{\sum_{j = 1, j \neq i}^{N} A_j}
+$$
+with $A_j$ the relative abundance of species $j$ the focal community.
+
+In the package the matrix version of the function `distinctiveness()` computes distinctiveness:
+
+```{r compute_distinctiveness}
+# The site-species matrix should be formatted beforehand
+pres_mat = pres_subset
+rownames(pres_mat) = pres_mat$GlobalID  # Name sites
+pres_mat = pres_mat[, -c(1:3)]          # Take out sites and coordinates
+pres_mat = as.matrix(pres_mat)
+
+mamm_di = distinctiveness(pres_mat, trait_distance)
+
+str(mamm_di)
+```
+Returned object is a `matrix`, with `NA` when species is absent of the community. The warning message tells use that some communities had a single species them, thus they had `NaN`, to make them differ from absent species with `NA` values.
+Either you can use the matrix format or transform it to a data frame using the `matrix_to_stack()` function where you indicate the name of the column that will contain the values, one for the row names and one for the column names:
+
+```{r}
+df_di = matrix_to_stack(mamm_di,
+                        value_col  = "di",      # Name of the column with values
+                        row_to_col = "site",    # Name of column with row names
+                        col_to_col = "species") # Name of column with col names
+
+head(df_di)
+```
+
+**WARNING:** When using an abundance matrix, it is important to change matrix to relative abundances using the `make_relative()` function, because $D_i$ formula uses relative abundances.
+
+### Uniqueness (Regional Trait Rarity)
+
+Similarly uniqueness $U_i$ is defined following [@Violle_Functional_2017] definition:
+$$
+    U_i = \min(d_{ij}), \forall j \in [1; N],  j \neq i
+$$
+with $d_{ij}$ the functional distance between species $i$ and $j$ with $j \neq i$, $N$ being the number of species at the global level.
+
+Uniqueness is thus the nearest neighbor distance in the functional distance from the focal species considering all species present in the global functional space.
+You can use `funrar` to compute uniqueness using `uniqueness()` and `uniqueness_stack()` function:
+
+```{r compute_uniqueness}
+mamm_ui = uniqueness(pres_mat, trait_distance)
+
+head(mamm_ui)
+```
+The output object is a data.frame containing species names and uniqueness values in `Ui` column.
+
+### Scarcity (Local Geographical Rarity)
+
+Scarcity measures the local rarity of a species, in terms of relative abundance, it is defined as:
+
+$$
+    S_i = \exp(-N\times \ln2 \times A_i)
+$$
+where $N$ is the number of species of the local community and $A_i$ the relative abundance of the focal species $i$.
+$S_i$ increases towards one when the focal species has a small relative abundance, and decreases towards zero when the species is dominant in a species rich community.
+When all species have the same relative abundance – i.e., $A_i = 1/N$ –, $S_i = 0.5$.
+
+Our example dataset does not contain abundances but you can compute scarcity using the same functions as before `scarcity()` and `scarcity_stack()`.
+
+**NOTE**: When computing scarcity, it is important to use **relative abundances** as input. Thus before using `scarcity()` on a matrix you should convert it to a relative abundances matrix using `make_relative()`.
+
+
+### Restrictedness (Regional Geographical Rarity)
+
+Restrictedness aims to measure the regional range of a species, for the moment it is defined as follow:
+$$
+    R_i = 1 - \frac{K_i}{K_{tot}}
+$$
+with $R_i$ the restrictedness of species $i$, $K_i$ the number of sites where species $i$ occur and $K_{tot}$ the total number of sites.
+
+You can compute restrictedness providing only the site-species matrix to `restrictedness()` and `restrictedness_stack()` functions:
+```{r compute_restrictedness}
+df_ri = restrictedness(pres_mat)
+
+head(df_ri)
+```
+The output is a data.frame with a single value of restrictedness per species in the `Ri` column.
+See alternative options in the notes section below.
+
+### Notes on computing rarity indices
+
+#### How to compute global Di or local Ui?
+
+Sometimes it can be interesting to compute distinctiveness at the global level. Because distinctiveness is meant to be mesured at the local-level normally one solution is to "trick" the `funrar` package by creating a fake community with all the species present:
+
+```{r global_di}
+# Take the first line of presence matrix, note the argument `drop = FALSE` to
+# keep matrix structure
+global_com = data.frame(species = colnames(pres_mat),
+                        site    = "global")
+
+global_di = distinctiveness_stack(global_com, "species", "site",
+                                  dist_matrix = trait_distance)
+head(global_di)
+```
+
+Similarly you may want to compute uniqueness at the site-level. In this case the code is a little trickier, as each site should be considered a pool. Also you have to choose if you consider the functional space of each local community or a global one. Here is an example while keeping the same global functional space:
+
+```{r}
+# Subset sites where there are more than one species
+subset_mat = pres_mat[rowSums(pres_mat) > 1,]
+
+com_ui = apply(subset_mat, 1,
+               function(x, dist_m = trait_distance) {
+                   # Subselect only present species
+                   present_sp = x[x > 0 & !is.na(x)]
+                   present_sp = as.matrix(present_sp)
+                   present_sp = t(present_sp)
+                   
+                   # Compute local uniqueness
+                   suppressMessages(uniqueness(present_sp, dist_m))})
+str(head(com_ui, 2))
+```
+
+#### Better perforamnces: using sparse matrices
+
+#### Alternative measure of Ri
+
+By default and as it was suggested in [@violle_functional_2017] restrictedness, $R_i$ is computed as follow:
+
+$$
+    R_{i} = 1 - \frac{K_i}{K_{tot}}
+$$
+with $K_i$ the number of sites where species $i$ occur and $K_{tot}$ the total number of sites. As the species occupies less and less sites, $R_i$ tends to one. The problem here is that $R_i$ equals one only for a species that occupies no site in the dataset, which makes no sense.
+Thus we can standardize $R_i$ on the value of restrictedness for species occupying a single site $R_{one}$:
+
+$$
+    R_i^\ast = \frac{R_i}{R_{one}} \\
+    = \frac{1 - \frac{K_i}{K_{tot}}}{1 - \frac{1}{K_{tot}}} \\
+    = \frac{K_{tot} - K_i}{K_{tot} - 1} \\
+$$
+with $R_i^\ast$ the new version of $R_i$. In this case, when a species occupies a single site, $R_i$ equals zero, while it equals one when occupying all the sites.
+
+It is possible to use this way of computing restrictedness using the argument `relative = TRUE` in `restrictedness()` and `restrictedness_stack()` functions.
+
+
+#### All at once
+
+The `funrar()` and `funrar_stack()` functions let you compute all indices at once. It outputs a list with all the indices indexed (`Ui` = uniqueness, `Di` = distinctiveness, `Ri` = restrictedness).
+```{r full_funrar}
+all_indices = funrar(pres_mat, trait_distance)
+
+str(all_indices, max.level = 1)
+```
+
+
+#### Note on parallelism
+
+The `funrar` package does not include functions to be run in parallel. However, the computation of indices can be parallelized by splitting site-species matrix in sub-matrices and computing the indices on those parts, using the same trait distance matrix.
+
+## Visualization
+
+### Indices distribution
+
+```{r}
+library("ggplot2")
+
+dist_di = ggplot(df_di, aes(di)) +
+    geom_histogram() +
+    labs(x = "Funct. Distinctiveness", y = "Count",
+         subtitle = "Distribution of species-site Distinctiveness") +
+    theme_bw()
+
+dist_di
+```
+
+```{r restrictedness_distribution}
+dist_ri = ggplot(df_ri, aes(Ri)) +
+    geom_histogram() +
+    labs(x = "Restrictedness", y = "Count") +
+    theme_bw()
+
+dist_ri
+```
+
+```{r ui_dist}
+dist_ui = ggplot(mamm_ui, aes(x = Ui)) +
+    geom_histogram() +
+    labs(x = "Uniqueness", y = "Count") +
+    theme_bw()
+
+dist_ui
+```
+
+
+### Indices correlations
+
+```{r}
+mamm_indices = merge(df_ri, global_di[, c(1, 3)], by = "species")
+mamm_indices = merge(mamm_indices, mamm_ui, by = "species")
+
+head(mamm_indices)
+```
+
+```{r di_ui}
+di_ui = ggplot(mamm_indices, aes(Di, Ui)) +
+    geom_point(alpha = 0.7) +
+    labs(x = "Funct. Distinctiveness",
+         y = "Funct. Uniqueness") +
+    theme_bw()
+
+di_ui
+```
+
+```{r ui_ri}
+ui_ri = ggplot(mamm_indices, aes(Ui, Ri)) +
+    geom_point(alpha = 0.7) +
+    labs(x = "Funct. Uniqueness",
+         y = "Restrictedness") +
+    theme_bw()
+
+ui_ri
+```
+
+```{r di_ri}
+di_ri = ggplot(mamm_indices, aes(Di, Ri)) +
+    geom_point(alpha = 0.7) +
+    labs(x = "Global Funct. Distinctiveness",
+         y = "Restrictedness") +
+    theme_bw()
+
+di_ri
+```
+
+
+### Functional Space
+
+The aim here is to use dimension reduction technique (such as Principal Component Analysis   or Principal Coordinates analysis) and reduce the functional space to a few key axes. Then to map on the projected points the values of our indices to see how they are associated to certain traits.
+
+```{r}
+
+```
+
+
+### Maps
+
+We can for example draw a map of site average functional distinctiveness:
+
+```{r}
+# Compute average distinctiveness per site
+site_di = with(df_di, aggregate(di, list(site), mean))
+names(site_di) = c("site", "Di_avg")
+
+# Add site coordinates
+site_di = merge(site_di, pres_matrix[, c(1:3)], by.x = "site", by.y = "GlobalID")
+
+# Draw map
+map_di = ggplot(site_di, aes(x = Longitude, y = Latitude, z = Di_avg)) +
+    stat_summary_2d(bins = 50, color = NA) +
+    borders(xlim = c(-170, -23), ylim = c(9.5,83), size = 0.01,
+            colour = "gray65") +
+    coord_map("albers", at0 = 40, lat1 = 20,
+              xlim = range(site_di$Longitude),
+              ylim = range(site_di$Latitude)) +
+    scale_fill_distiller(palette = "YlOrRd", direction = 1,
+                         limits = c(0, 1)) +
+    theme_minimal() +
+    theme(legend.position = c(0.1, 0.2)) +
+    borders(xlim = c(-170, -23), ylim = c(9.5,83), size = 0.1,
+            colour = "gray65")
+
+map_di
+```
+
+
+
+## References

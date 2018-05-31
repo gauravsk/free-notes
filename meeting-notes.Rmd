@@ -1,0 +1,119 @@
+---
+title: "Notes from FREE"
+author: "Gaurav Kandlikar"
+date: "May 28, 2018"
+output: pdf_document
+---
+
+### Introduction to CESAB/Free  
+
+Mechanisms of maintaining functional rarity; Evolutionary forces that generate functional rarity; geographic congruence or mismatch of rarity in taxonomic, phylogenetic, or functional rarity.  
+
+Scales of rarity-- time and spatial scales matter to defining and determining consequences of FR. (How) does scarcity at one scale influence community description?  
+
+Decision of which traits to include might change statistical descriptors of rarity.  
+
+Generation of triangular patterns in trait X spatial diversity
+
+Metrics of rarity- average distance of species from the rest of the community? Or on a hypervolume?  
+
+"Length of trait axis" is an interesting consideration-- often things are collapsed into "scaled" axes
+-----------
+
+### Day 2-- 29 May 2018  
+
+- CT showed that uniqueness of a species depends on the traits yo choose- an important point.  
+
+#### Matthias' funrar tutorial  
+
+*code not run*
+```{r, eval = F}
+# This script installs all packages necessary for the tutorial to use `funrar`
+# package
+# Author: Matthias Grenié <matthias.grenie[at]cefe.cnrs.fr>
+# /!\ WARNING it creates a directory 'funrar_tutorial' in the current working
+# directory, make sure to change the working directory if you want to install
+# the tutorial folder elsewhere /!\
+
+# Installing Packages ----------------------------------------------------------
+# Install package `devtools` to install development version of `funrar`
+if (!require("devtools")) {
+    install.packages("devtools")
+}
+
+# Install development version of funrar
+devtools::install_github("Rekyt/funrar", build_vignettes = TRUE)
+
+# Install development version of `rdryad` if missing to download the example
+# dataset
+devtools::install_github("ropensci/rdryad")
+
+# Install `ggplot2` if missing
+if (!require("ggplot2")) {
+    install.packages("ggplot2")
+}
+
+
+# Create Folders ---------------------------------------------------------------
+# Create a tutorial directory in the current directory
+if (!dir.exists("funrar_tutorial")) {
+    dir.create("funrar_tutorial")
+}
+
+# Move to tutorial directory
+setwd("funrar_tutorial")
+
+if (!dir.exists("data")) {
+    dir.create("data")
+}
+
+# Dowload Data -----------------------------------------------------------------
+# Download the example dataset from Lawning et al. 2016
+# <doi:10.5061/dryad.9t0n8>
+tempfile("data/lawning_data.zip")
+rdryad::dryad_fetch(
+    rdryad::dryad_files(rdryad::handle2doi("10255/dryad.116171"))[1],
+    destfile = "data/lawning_data.zip", mode = "wb")
+unzip("data/lawning_data.zip", exdir = "data")
+unlink("data/lawning_data.zip")
+```
+
+The metrics are as in the TREE paper.  
+
+### Day 3- 30 May 2018  
+
+
+#### Subgroup  
+
+Annette suggests "if I had to make a model of this what would it look like" as a way of formalizing each mechanism- but a single model that allows for everything would be quite bloated  
+
+NK suggests that a mass action model with a trait-fitness relationship might be simpler  
+
+#### Assumptions  
+
+1. We consider two traits that are relevant for a species' performance  
+2. Globally, there is some fitness landscape across these traits-- some trait combinations are not viable anywhere; others are more or less fit.  
+3. Each species' trait value determines its fitness in a given community (each community may have a distinct fitness landscape)  
+4. The fitness landscape in a community is described by the distribution of resources    
+
+#### More notes  
+
+At local scale, environment and interactions influence rarity  
+
+At regional scales, variation in space allows for positive growth rates at a wider range of traits.  
+
+### Day 4  
+
+ITV-- To make really clear predictions regarding the importance of ITV, I think we need to be clear about our assumptions about the underlying trait environment relationships.  
+
+How to organize the effects of species interactions in driving (functional) rarity  
+
+1. Competition, 
+2. Mutualism (or lack of), 
+3. Predation.
+
+Predation can (probably) have various effects, but the simplest would be through changing the fitness landscape-- e.g. a trait combination has high fitness in the environment but is also rapidly consumed. There's also the potential for apparent competition (the presense of one species boosts a predator which then suppresses a second species to rarity).  
+
+Mutualism may also have a straightforward influence on (functional) rarity -- for example, the presence of an extra-guild mutualist may bring in new areas of population growth rate where previously there was none. Similarly to apparent competition, the presence of a mutualist may boost a particular species that then suppresses a second species to rarity (e.g. via competition)  
+
+Competition seems hardest to think about. Most simply, a particular trait combination may have an equal low-density growth rate to another, but there might be species differences in sensitivity to competition, due to variation in a third trait axis. This would result in no *trait* rarity, but in rare, common-traited species  
