@@ -117,3 +117,13 @@ Predation can (probably) have various effects, but the simplest would be through
 Mutualism may also have a straightforward influence on (functional) rarity -- for example, the presence of an extra-guild mutualist may bring in new areas of population growth rate where previously there was none. Similarly to apparent competition, the presence of a mutualist may boost a particular species that then suppresses a second species to rarity (e.g. via competition)  
 
 Competition seems hardest to think about. Most simply, a particular trait combination may have an equal low-density growth rate to another, but there might be species differences in sensitivity to competition, due to variation in a third trait axis. This would result in no *trait* rarity, but in rare, common-traited species  
+ 
+ 
+### Day 5  
+
+ITV-- our expectations for ITV should change depending on why something is rare. The expectations for almost all cases depends on how we think the trait-environment relationship works. In this case it might be worth having simulations that allow for variable amount of variability whithin a species that also vary in their mean trait values. 
+
+For practical terms it may also be worth doing simulations that include stochastic trait-environment relationships. For example, "In this environment, high SLA species have a higher likelihood of having a higher vital rate" -- and building in some nonlinearities in this would be ideal.  I wonder if this would be that much different from Simon's work.
+
+Cyrille suggested that Enquist would be interested in thinking about trait driver theory and ITV  
+
